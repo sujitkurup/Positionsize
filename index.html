@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Risk-Based Quantity Calculator</title>
+  <style>
+    :root { --bg:#0b1020; --card:#121732; --ink:#e9ecf1; --muted:#9aa3b2; --accent:#6ae3ff; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Inter,sans-serif; background:var(--bg); color:var(--ink); }
+    .wrap { max-width: 980px; margin: 24px auto; padding: 16px; }
+    .card { background: var(--card); border: 1px solid #22294d; border-radius: 16px; padding: 20px; box-shadow: 0 10px 24px rgba(0,0,0,.25); }
+    h1 { font-size: clamp(22px, 3vw, 28px); margin: 0 0 14px; }
+    p.hint { color: var(--muted); margin: 0 0 16px; }
+    .grid { display:grid; grid-template-columns: repeat(auto-fit,minmax(230px,1fr)); gap:14px; }
+    label { display:block; font-size: 12px; color: var(--muted); margin-bottom:6px; }
+    input, select { width:100%; background:#0e1330; color:var(--ink); border:1px solid #2a3262; border-radius:10px; padding:10px 12px; outline:none; font-size:14px; }
+    input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(106,227,255,.15); }
+    .btns { display:flex; gap:10px; flex-wrap:wrap; }
+    button { background:#1b2250; color:var(--ink); border:1px solid #2a3262; border-radius:10px; padding:10px 14px; cursor:pointer; font-weight:600; }
+    button:hover { border-color: var(--accent); }
+    .out { display:grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap:12px; margin-top:16px; }
+    .kpi { background:#0e1330; border:1px dashed #2a3262; border-radius:12px; padding:12px; }
+    .kpi h3 { margin:0; font-size:13px; color:var(--muted); }
+    .kpi div { font-size:22px; font-weight:800; margin-top:6px; }
+    .table-wrap { margin-top:18px; overflow:auto; border:1px solid #20285a; border-radius:12px; }
+    table { width:100%; border-collapse: collapse; }
+    th, td { padding:10px 12px; text-align:right; border-bottom:1px solid #1c2350; }
+    th { position:sticky; top:0; background:#121944; text-align:center; }
+    td:first-child, th:first-child { text-align:center; }
+    .muted { color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Risk-Based Quantity Calculator</h1>
+      <div class="grid">
+        <div>
+          <label for="capital">Capital (₹)</label>
+          <input id="capital" type="number" value="80000" />
+        </div>
+        <div>
+          <label for="riskPct">Risk % of Capital</label>
+          <input id="riskPct" type="number" step="0.1" value="1" />
+        </div>
+        <div>
+          <label for="riskFixed">Fixed Risk / Trade (₹)</label>
+          <input id="riskFixed" type="number" value="1000" />
+        </div>
+        <div>
+          <label for="mode">Risk Mode</label>
+          <select id="mode">
+            <option value="pct">% of Capital</option>
+            <option value="fixed">Fixed ₹</option>
+          </select>
+        </div>
+        <div>
+          <label for="stop">Stop Loss per Share (₹)</label>
+          <input id="stop" type="number" value="5" />
+        </div>
+        <div>
+          <label for="rr">RR Multiple</label>
+          <input id="rr" type="number" step="0.1" value="1.5" />
+        </div>
+        <div>
+          <label for="lot">Lot Size</label>
+          <input id="lot" type="number" value="1" />
+        </div>
+        <div>
+          <label for="cushion">Brokerage/Slippage Cushion %</label>
+          <input id="cushion" type="number" step="0.1" value="0" />
+        </div>
+      </div>
+      <div class="btns" style="margin-top:12px">
+        <button data-risk="500">Risk ₹500</button>
+        <button data-risk="1000">Risk ₹1000</button>
+        <button data-risk="2000">Risk ₹2000</button>
+      </div>
+      <div class="out">
+        <div class="kpi"><h3>Risk / Trade</h3><div id="riskOut">—</div></div>
+        <div class="kpi"><h3>Quantity</h3><div id="qtyOut">—</div></div>
+        <div class="kpi"><h3>Total Reward</h3><div id="rewardOut">—</div></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:18px">
+      <h1>Quick Table</h1>
+      <div class="grid">
+        <div>
+          <label for="slFrom">SL Start (₹)</label>
+          <input id="slFrom" type="number" value="1" />
+        </div>
+        <div>
+          <label for="slTo">SL End (₹)</label>
+          <input id="slTo" type="number" value="120" />
+        </div>
+        <div>
+          <label for="slStep">SL Step</label>
+          <input id="slStep" type="number" value="1" />
+        </div>
+        <div style="align-self:end">
+          <button id="build">Build Table</button>
+        </div>
+      </div>
+      <div class="table-wrap" style="display:none" id="tblWrap">
+        <table id="tbl">
+          <thead>
+            <tr><th>STOP LOSS (₹)</th><th>QUANTITY</th><th>REWARD / SHARE (₹)</th><th>TOTAL REWARD (₹)</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const $ = id => document.getElementById(id);
+    const fmt = n => isFinite(n) ? new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(n) : '—';
+    const money = n => isFinite(n) ? new Intl.NumberFormat('en-IN', { style:'currency', currency:'INR', maximumFractionDigits: 0 }).format(n) : '—';
+
+    const els = {
+      capital: $('capital'), riskPct: $('riskPct'), riskFixed: $('riskFixed'), mode: $('mode'),
+      stop: $('stop'), rr: $('rr'), lot: $('lot'), cushion: $('cushion'),
+      riskOut: $('riskOut'), qtyOut: $('qtyOut'), rewardOut: $('rewardOut'),
+      slFrom: $('slFrom'), slTo: $('slTo'), slStep: $('slStep'), tbl: $('tbl'), tblWrap: $('tblWrap')
+    };
+
+    function computeRisk() {
+      const cap = +els.capital.value || 0;
+      const pct = +els.riskPct.value || 0;
+      const fixed = +els.riskFixed.value || 0;
+      return els.mode.value === 'pct' ? cap * (pct/100) : fixed;
+    }
+
+    function compute() {
+      const risk = computeRisk();
+      const cushion = Math.max(0, Math.min(100, +els.cushion.value || 0));
+      const effRisk = risk * (1 - cushion/100);
+      const stop = +els.stop.value || 0;
+      const lot = Math.max(1, Math.floor(+els.lot.value || 1));
+      let qty = stop > 0 ? Math.floor((effRisk / stop) / lot) * lot : 0;
+      const rewardShare = stop * (+els.rr.value || 0);
+      const totalReward = qty * rewardShare;
+      els.riskOut.textContent = money(risk);
+      els.qtyOut.textContent = fmt(qty);
+      els.rewardOut.textContent = money(totalReward);
+    }
+
+    document.querySelectorAll('input, select').forEach(x=> x.addEventListener('input', compute));
+    document.addEventListener('DOMContentLoaded', compute);
+    document.querySelectorAll('button[data-risk]').forEach(btn => {
+      btn.addEventListener('click', ()=>{ els.mode.value='fixed'; els.riskFixed.value = btn.dataset.risk; compute(); });
+    });
+
+    $('build').addEventListener('click', ()=>{
+      const from = +els.slFrom.value || 1; const to = +els.slTo.value || 120; const step = Math.max(1, +els.slStep.value || 1);
+      const body = els.tbl.querySelector('tbody'); body.innerHTML='';
+      const risk = computeRisk(); const cushion = Math.max(0, Math.min(100, +els.cushion.value || 0));
+      const effRisk = risk * (1 - cushion/100); const lot = Math.max(1, Math.floor(+els.lot.value || 1));
+      for (let sl = from; sl <= to; sl += step) {
+        const qty = Math.floor((effRisk / sl) / lot) * lot;
+        const rps = sl * (+els.rr.value || 0);
+        const totalR = qty * rps;
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${fmt(sl)}</td><td>${fmt(qty)}</td><td>${money(rps)}</td><td>${money(totalR)}</td>`;
+        body.appendChild(tr);
+      }
+      els.tblWrap.style.display = 'block';
+    });
+  </script>
+</body>
+</html>
